@@ -24,6 +24,19 @@ contract BasicBankERC20 {
      * @param amount The amount of tokens to deposit
      */
     function deposit(address token, uint256 amount) external {
+      address bankAddress = address(this);
+      IERC20 anyToken = IERC20(token);
+      // check my balance of this token before I do this deposit
+      uint256 existingBalance = anyToken.balanceOf(bankAddress);
+      // token - transfer it from user to me the bank
+      anyToken.safeTransferFrom(msg.sender, bankAddress, amount);
+      // check my balance of this token after
+      uint256 postBalance = anyToken.balanceOf(bankAddress);
+      uint256 balanceDifference = postBalance - existingBalance;
+      // if my balance is not what I expect, revert with FeeOnTransferNotSupported();
+      require(balanceDifference == amount, FeeOnTransferNotSupported());
+      userTokenBalance[msg.sender][token] = amount;
+      emit Deposit(msg.sender, token, amount);
     }
 
     /*
@@ -33,5 +46,11 @@ contract BasicBankERC20 {
      * @param amount The amount of tokens to withdraw
      */
     function withdraw(address token, uint256 amount) external {
+      address bankAddress = address(this);
+      require(userTokenBalance[msg.sender][token] >= amount, InsufficientBalance());
+      IERC20 anyToken = IERC20(token);
+      anyToken.transfer(msg.sender, amount);
+      userTokenBalance[msg.sender][token] -= amount;
+      emit Withdraw(msg.sender, token, amount);
     }
 }
