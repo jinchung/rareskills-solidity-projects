@@ -14,6 +14,20 @@ contract ERC20Splitter {
     error InsufficientApproval();
     error ArrayLengthMismatch();
 
-    function split(IERC20 token, address[] calldata recipients, uint256[] calldata amounts) external {
+    function split(IERC20 _token, address[] calldata recipients, uint256[] calldata amounts) external {
+      require(recipients.length == amounts.length, ArrayLengthMismatch());
+
+      uint256 totalAmount;
+      for (uint256 i = 0; i < amounts.length; i++) {
+        totalAmount += amounts[i];
+      }
+      uint256 senderBalance = _token.balanceOf(msg.sender);
+      require(senderBalance >= totalAmount, InsufficientBalance());
+
+      require(_token.allowance(msg.sender, address(this)) >= totalAmount, InsufficientApproval());
+
+      for (uint256 i = 0; i < recipients.length; i++) {
+        _token.safeTransferFrom(msg.sender, recipients[i], amounts[i]);
+      }
     }
 }
