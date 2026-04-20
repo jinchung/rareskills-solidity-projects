@@ -22,6 +22,7 @@ contract WeeklySalary is Ownable2Step {
     using SafeERC20 for ERC20;
 
     constructor(address tokenAddress) Ownable(msg.sender) {
+      token = ERC20(tokenAddress);
     }
 
     struct Contractor {
@@ -43,14 +44,36 @@ contract WeeklySalary is Ownable2Step {
     error InsufficientBalance();
 
     function createContractor(address _contractor, uint256 _weeklySalary) external onlyOwner {
+      require(_contractor != address(0), InvalidContractorAddress());
+      require(_weeklySalary != 0, InvalidWeeklySalary());
+      require(contractors[_contractor].weeklySalary == 0, ContractorAlreadyExists());
+      contractors[_contractor] = Contractor(_weeklySalary, block.timestamp);
+      emit ContractorCreated(_contractor, _weeklySalary);
     }
 
     function deleteContractor(address _contractor) external onlyOwner {
+      require(_contractor != address(0), InvalidContractorAddress());
+      require(contractors[_contractor].weeklySalary != 0, InvalidContractorAddress());
+      contractors[_contractor] = Contractor(0, 0);
+      emit ContractorDeleted(_contractor);
     }
 
     /*
      * @dev if the balance of the contract is not sufficient, the function will revert
      */
     function withdraw() external {
+      uint256 weeklySalary = contractors[msg.sender].weeklySalary;
+      uint256 lastWithdrawal = contractors[msg.sender].lastWithdrawal;
+      uint256 timeDiff = lastWithdrawal == 0 ? 0 : block.timestamp - lastWithdrawal;
+      uint256 fullWeeksEarned = timeDiff / 1 weeks;
+      uint256 payout = fullWeeksEarned * weeklySalary;
+
+      uint256 contractBalance = token.balanceOf(address(this));
+      require(contractBalance >= payout, InsufficientBalance());
+
+      token.transfer(msg.sender, payout);
+      contractors[msg.sender] = Contractor(weeklySalary, block.timestamp);
+
+      emit Withdrawal(msg.sender, payout);
     }
 }
