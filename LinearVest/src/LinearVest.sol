@@ -70,6 +70,21 @@ contract LinearVest {
         uint40 duration,
         uint256 salt
     ) external {
+      require(address(token) != address(0), "0 address token not allowed");
+      require(recipient != address(0), "0 address recipient not allowed");
+      require(amount != 0, "0 amount not allowed");
+      require(startTime != 0, "0 start time not allowed");
+      require(duration != 0, "0 duration not allowed");
+
+      uint256 prevBalance = token.balanceOf(address(this));
+      token.safeTransferFrom(msg.sender, address(this), amount);
+      uint256 currentBalance = token.balanceOf(address(this));
+      uint256 balanceTransferredIn = currentBalance - prevBalance;
+      require(balanceTransferredIn == amount, "fee on transfer token not allowed");
+      bytes32 vestId = computeVestId(token, recipient, amount, startTime, duration, salt);
+      vests[vestId] = Vest(address(token), startTime, recipient, duration, amount, 0);
+      vestIds.push(vestId);
+      emit VestCreated(msg.sender, recipient, address(token), amount, startTime, duration);
     }
 
     /**
@@ -78,7 +93,16 @@ contract LinearVest {
      * @param amount The amount to withdraw. If amount is greater than the amount withdrawable,
      * the amount withdrawable is withdrawn.
      */
+
     function withdrawVest(bytes32 vestId, uint256 amount) external {
+      Vest storage vest = vests[vestId];
+      require(vest.recipient == msg.sender, "not the recipient");
+      uint256 withdrawable = (vest.amount * (block.timestamp - vest.startTime) / vest.duration) - vest.withdrawn;
+      uint256 amountWithdrawn = amount > withdrawable ? withdrawable : amount;
+      IERC20(vest.token).transfer(vest.recipient, amountWithdrawn);
+
+      vest.withdrawn += amountWithdrawn;
+      emit VestWithdrawn(vest.recipient, vestId, vest.token, amountWithdrawn, block.timestamp);
     }
 
     /*
@@ -99,5 +123,6 @@ contract LinearVest {
         uint40 duration,
         uint256 salt
     ) public pure returns (bytes32) {
+      return keccak256(abi.encodePacked(token, recipient, amount, startTime, duration, salt));
     }
 }
