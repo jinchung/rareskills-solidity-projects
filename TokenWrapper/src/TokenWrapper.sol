@@ -33,15 +33,37 @@ contract TokenWrapper is ERC20 {
     event Unwrap(address indexed to, uint256 amount);
 
     constructor(address _token) ERC20("", "") {
+      token = IERC20Metadata(_token);
+
+      try token.name() returns (string memory _name) {
+        nameInternal = string.concat("Wrapped ", _name);
+      } catch {
+        nameInternal = "Wrapped";
+      }
+
+      try token.symbol() returns (string memory _symbol) {
+        symbolInternal = string.concat("w", _symbol);
+      } catch {
+        symbolInternal = "w";
+      }
+
+      try token.decimals() returns (uint8 _decimals) {
+        decimalsInternal = _decimals;
+      } catch {
+        decimalsInternal = 0;
+      }
     }
 
     function decimals() public view override returns (uint8) {
+      return decimalsInternal;
     }
 
     function name() public view override returns (string memory) {
+      return nameInternal;
     }
 
     function symbol() public view override returns (string memory) {
+      return symbolInternal;
     }
 
     /**
@@ -50,6 +72,8 @@ contract TokenWrapper is ERC20 {
       * @param amount The amount of tokens to wrap
       */ 
     function wrap(uint256 amount) external {
+      token.safeTransferFrom(msg.sender, address(this), amount);
+      _mint(msg.sender, amount);
     }
 
     /** 
@@ -58,5 +82,7 @@ contract TokenWrapper is ERC20 {
       * @param amount The amount of tokens to unwrap
       */ 
     function unwrap(uint256 amount) external {
+      _burn(msg.sender, amount);
+      token.transfer(msg.sender, amount);
     }
 }
