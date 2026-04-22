@@ -18,6 +18,17 @@ contract LinearDutchAuctionFactory {
         uint256 _amount,
         address _seller
     ) external returns (address) {
+      require(_amount != 0, "0 amount not allowed");
+      LinearDutchAuction auction = new LinearDutchAuction(
+        _token,
+        _startingPriceEther,
+        _startTime,
+        _duration,
+        _seller
+      );
+      _token.safeTransferFrom(msg.sender, address(auction), _amount);
+      emit AuctionCreated(address(auction), address(_token), _startingPriceEther, _startTime, _duration, _amount, _seller);
+      return address(auction);
     }
 }
 
@@ -37,6 +48,8 @@ contract LinearDutchAuction {
     address public immutable seller;
 
     error AuctionNotStarted();
+    error AuctionEnded();
+    error TokenAlreadyPurchased();
     error MsgValueInsufficient();
     error SendEtherToSellerFailed();
 
@@ -55,6 +68,16 @@ contract LinearDutchAuction {
         uint256 _durationSeconds,
         address _seller
     ) {
+      require(address(_token) != address(0), "0 address token not allowed");
+      require(address(_seller) != address(0), "0 address seller token not allowed");
+      require(_startingPriceEther != 0, "0 starting price not allowed");
+      require(_durationSeconds != 0, "0 duration not allowed");
+      require(_startTime != 0, "0 start time not allowed");
+      token = _token;
+      startingPriceEther = _startingPriceEther;
+      startTime = _startTime;
+      durationSeconds = _durationSeconds;
+      seller = _seller;
     }
 
     /*
@@ -65,6 +88,16 @@ contract LinearDutchAuction {
      * @return the current price of the token in Ether
      */ 
     function currentPrice() public view returns (uint256) {
+      require(block.timestamp >= startTime, AuctionNotStarted());
+      require(token.balanceOf(address(this)) > 0, TokenAlreadyPurchased());
+
+      uint256 endTime = startTime + durationSeconds;
+      if (block.timestamp > endTime) {
+        return 0;
+      }
+
+      uint256 price = startingPriceEther - ((startingPriceEther * (block.timestamp - startTime)) / durationSeconds);
+      return price;
     }
 
     /*
@@ -76,5 +109,21 @@ contract LinearDutchAuction {
      * @dev Will try to refund the user if they send too much ether. If the refund reverts, the transaction still succeeds.
      */
     receive() external payable {
+      uint256 endTime = startTime + durationSeconds;
+      require(block.timestamp <= endTime, AuctionEnded());
+
+      uint256 price = currentPrice();
+      require(msg.value >= price, MsgValueInsufficient());
+
+      (bool ok, ) = payable(seller).call{value: price}("");
+      require(ok, SendEtherToSellerFailed());
+
+      uint256 tokenBalance = token.balanceOf(address(this));
+      token.transfer(msg.sender, tokenBalance);
+      
+      uint256 overPayment = msg.value - price;
+      if (overPayment > 0) {
+        (bool ok, ) = payable(msg.sender).call{value: overPayment}("");
+      }
     }
 }
