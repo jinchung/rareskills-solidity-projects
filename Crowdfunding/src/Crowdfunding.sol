@@ -18,7 +18,14 @@ contract Crowdfunding {
     event Withdrawal(address indexed beneficiary, uint256 amount);
 
     constructor(address token_, address beneficiary_, uint256 fundingGoal_, uint256 deadline_) {
-
+      require(token_ != address(0), "Token address cannot be 0");
+      require(beneficiary_ != address(0), "Beneficiary address cannot be 0");
+      require(fundingGoal_ != 0, "Funding goal must be greater than 0");
+      require(deadline_ >= block.timestamp, "Deadline must be in the future");
+      token = IERC20(token_);
+      beneficiary = beneficiary_;
+      fundingGoal = fundingGoal_;
+      deadline = deadline_;
     }
 
     /*
@@ -26,17 +33,32 @@ contract Crowdfunding {
      * @param amount the amount of tokens to contribute.
      */
     function contribute(uint256 amount) external {
+      require(block.timestamp <= deadline, "Contribution period over");
+      token.safeTransferFrom(msg.sender, address(this), amount);
+      contributions[msg.sender] = amount;
+      emit Contribution(msg.sender, amount);
     }
 
     /*
      * @notice a contribution can be cancelled if the goal is not reached. Returns the tokens to the contributor.
      */ 
     function cancelContribution() external {
+      require(token.balanceOf(address(this)) < fundingGoal, "Cannot cancel after goal reached");
+      uint256 amount = contributions[msg.sender];
+      token.transfer(msg.sender, amount);
+      contributions[msg.sender] = 0;
+      emit CancelContribution(msg.sender, amount);
     }
 
     /*
      * @notice the beneficiary can withdraw the funds if the goal is reached.
      */
     function withdraw() external {
+      uint256 totalBalance = token.balanceOf(address(this));
+      require(block.timestamp >= deadline, "Funding period not over");
+      require(totalBalance >= fundingGoal, "Funding goal not reached");
+      require(msg.sender == beneficiary, "Only beneficiary can withdraw");
+      token.transfer(msg.sender, totalBalance);
+      emit Withdrawal(beneficiary, totalBalance);
     }
 }
